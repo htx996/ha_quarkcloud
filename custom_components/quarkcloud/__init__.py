@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import logging
 
+import homeassistant.helpers.config_validation as cv
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.typing import ConfigType
 
 from .api import QuarkApiError, QuarkAuthError, QuarkCloudApi
 from .const import (
@@ -25,6 +27,16 @@ _LOGGER = logging.getLogger(__name__)
 type QuarkCloudConfigEntry = ConfigEntry[QuarkCloudApi]
 
 PLATFORMS = ["sensor"]
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Set up integration-level components (the media streaming view)."""
+    from .view import QuarkMediaStreamView
+
+    hass.http.register_view(QuarkMediaStreamView())
+    return True
 
 
 async def async_setup_entry(

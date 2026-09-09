@@ -38,6 +38,7 @@ from .const import (
     PATH_FILE_MOVE,
     PATH_FILE_DELETE,
     PATH_FILE_SEARCH,
+    PATH_FILE_LIST,
     PATH_GET_DOWNLOAD_URL,
     PATH_GET_UPLOAD_URLS,
     PATH_TOKEN_ROTATE,
@@ -605,24 +606,54 @@ class QuarkCloudApi:
         self,
         keyword: str,
         size: int = 50,
-        category: int | None = None,
+        search_type: str = "mix",
+        parent_fid: str | None = None,
         page: int | None = None,
     ) -> dict[str, Any]:
         """POST /agent/v1/file/search.
 
-        CLI parity: wrapper passes ``{keyword, size||10, category, page}``;
-        undefined fields (category/page) are dropped by JSON.stringify.
+        Skill 1.0.19 parity: ``search_type`` is now a string enum
+        (``mix``/``video``/``album``/``doc``/``audio``/``dir``/``package``
+        /``other``/``app``) replacing the old numeric ``category`` field;
+        ``parent_fid`` scopes the search to a folder. ``size`` is a single
+        page size (1-100); the CLI paginates via ``has_more``/``search_id``
+        which this integration does not need (single page is enough for
+        backup bookkeeping). Undefined fields are dropped by
+        JSON.stringify in the CLI.
         """
         body: dict[str, Any] = {
-            "search_type": "mix",
             "keyword": keyword,
             "size": size,
+            "search_type": search_type,
         }
-        if category is not None:
-            body["category"] = category
+        if parent_fid is not None:
+            body["parent_fid"] = parent_fid
         if page is not None:
             body["page"] = page
         return await self._request("POST", PATH_FILE_SEARCH, body=body)
+
+    async def list_files(
+        self,
+        parent_fid: str = "0",
+        size: int = 100,
+        sort: str = "updated_at:desc",
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        """POST /open/v1/file/list (skill 1.0.19 ``browse``).
+
+        CLI parity: body carries ``parent_fid``/``sort`` (``field:dir``)/
+        ``size`` and an opaque ``query_cursor`` for pagination; undefined
+        fields are dropped by JSON.stringify in the CLI. The response
+        contains ``file_list``, ``last_page`` and ``next_query_cursor``.
+        """
+        body: dict[str, Any] = {
+            "parent_fid": parent_fid,
+            "sort": sort,
+            "size": size,
+        }
+        if cursor:
+            body["query_cursor"] = cursor
+        return await self._request("POST", PATH_FILE_LIST, body=body)
 
     async def create_folder(
         self, dir_path: str, pdir_fid: str = ""

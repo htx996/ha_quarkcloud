@@ -1,6 +1,6 @@
 # ha_quarkcloud
 
-[Quark Cloud Drive](https://pan.quark.cn)（夸克网盘）的 Home Assistant 自定义集成，提供**云端备份代理**和网盘信息传感器。
+[Quark Cloud Drive](https://pan.quark.cn)（夸克网盘）的 Home Assistant 自定义集成，提供**云端备份代理**、网盘信息传感器和**原生媒体面板**（在 HA 媒体中浏览/搜索/播放网盘文件）。
 
 ## 安装
 
@@ -53,6 +53,17 @@
 
 获取新授权码的方式与首次添加相同：夸克电脑客户端 → 右上角头像 → 网盘Skill授权。
 
+### 媒体面板（浏览/播放网盘文件）
+
+添加集成后，侧栏 **媒体** 的来源列表中会出现 **Quark Cloud Drive**，无需额外配置：
+
+![媒体面板](img/media.png)
+
+- 浏览网盘目录，播放图片 / 视频 / 音频（可投放到电视、音箱等媒体播放器）
+- 媒体面板中直接**搜索**全盘文件（走夸克搜索接口）
+- 受开放平台单文件 50MB 下载限制，超限文件会显示但不可播放
+- 播放流量经 HA 代理转发，支持视频拖动进度条（Range）
+
 ### 云端备份（Backup Agent）
 
 在 HA 的备份（设置 → 系统 → 备份）中选择 Quark Cloud Drive 作为备份目标：
@@ -92,6 +103,8 @@ custom_components/quarkcloud/
 ├── api.py             # API 客户端（认证/上传/下载/文件操作）
 ├── backup.py          # BackupAgent 实现
 ├── sensor.py          # 设备与传感器
+├── media_source.py    # 原生媒体面板（网盘浏览/播放/搜索）
+├── view.py            # 媒体流代理（带 Cookie 转发，支持拖动）
 ├── config_flow.py     # 授权码输入流程 + 更新授权码设置
 ├── const.py           # 常量与端点
 ├── brand/             # 品牌图标

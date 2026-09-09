@@ -108,7 +108,9 @@ class QuarkCloudBackupAgent(BackupAgent):
 
     async def _find_dir(self, name: str) -> str | None:
         """Find a folder by name at the drive root, return its fid."""
-        result = await self._api.search_files(name, size=20, category=0)
+        # Skill 1.0.19: folder search via the string search_type enum
+        # (the numeric category=0 field was removed from the protocol).
+        result = await self._api.search_files(name, size=20, search_type="dir")
         for item in result.get("file_list") or []:
             if item.get("filename") == name and str(item.get("category")) == "0":
                 return item.get("fid")
