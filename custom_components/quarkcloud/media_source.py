@@ -10,6 +10,7 @@ above the open-API 50MB download limit are marked not playable.
 from __future__ import annotations
 
 import base64
+import inspect
 import json
 import logging
 import mimetypes
@@ -17,6 +18,7 @@ from typing import Any
 
 from homeassistant.components.media_player import (
     BrowseError,
+    BrowseMedia,
     MediaClass,
     SearchMedia,
     SearchMediaQuery,
@@ -48,6 +50,25 @@ _MEDIA_CLASSES: tuple[MediaClass, ...] = (
     MediaClass.VIDEO,
     MediaClass.MUSIC,
 )
+
+
+def _supports_search_filters() -> bool:
+    """Whether this HA core accepts search_media_classes on BrowseMedia.
+
+    The search-filter dropdown is a recent core addition; passing it to
+    an older BrowseMedia raises TypeError and breaks browsing entirely,
+    so probe the constructor signature once at import time.
+    """
+    try:
+        return (
+            "search_media_classes"
+            in inspect.signature(BrowseMedia.__init__).parameters
+        )
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        return False
+
+
+SEARCH_FILTERS_SUPPORTED = _supports_search_filters()
 
 
 async def async_get_media_source(hass: HomeAssistant) -> QuarkCloudMediaSource:
@@ -185,7 +206,11 @@ class QuarkCloudMediaSource(MediaSource):
                 not_shown += 1
             else:
                 children.append(child)
-        return BrowseMediaSource(
+        # search_media_classes only exists on newer HA cores; on older
+        # ones the search bar (can_search) still works without filters.
+        # The key must be omitted entirely - passing None would still
+        # reach BrowseMedia.__init__ and crash older cores.
+        node = BrowseMediaSource(
             domain=DOMAIN,
             identifier=None,
             media_class=MediaClass.DIRECTORY,
@@ -194,11 +219,13 @@ class QuarkCloudMediaSource(MediaSource):
             can_play=False,
             can_expand=True,
             can_search=root,
-            search_media_classes=list(_MEDIA_CLASSES) if root else None,
             children=children,
             children_media_class=MediaClass.DIRECTORY,
             not_shown=not_shown,
         )
+        if root and SEARCH_FILTERS_SUPPORTED:
+            node.search_media_classes = list(_MEDIA_CLASSES)
+        return node
 
     async def _async_list_dir(
         self, api: QuarkCloudApi, parent_fid: str
