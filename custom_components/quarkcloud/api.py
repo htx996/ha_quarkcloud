@@ -637,14 +637,17 @@ class QuarkCloudApi:
         parent_fid: str = "0",
         size: int = 100,
         sort: str = "updated_at:desc",
-        cursor: str | None = None,
+        cursor: dict[str, Any] | str | None = None,
     ) -> dict[str, Any]:
         """POST /open/v1/file/list (skill 1.0.19 ``browse``).
 
         CLI parity: body carries ``parent_fid``/``sort`` (``field:dir``)/
-        ``size`` and an opaque ``query_cursor`` for pagination; undefined
-        fields are dropped by JSON.stringify in the CLI. The response
-        contains ``file_list``, ``last_page`` and ``next_query_cursor``.
+        ``size`` and a ``query_cursor`` for pagination; the cursor is an
+        opaque value the server hands out (``next_query_cursor``) and
+        must be round-tripped as-is (an object like
+        ``{"version": ..., "token": ...}``). Undefined fields are
+        dropped by JSON.stringify in the CLI. The response contains
+        ``file_list``, ``last_page`` and ``next_query_cursor``.
         """
         body: dict[str, Any] = {
             "parent_fid": parent_fid,

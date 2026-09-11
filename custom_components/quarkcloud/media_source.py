@@ -232,7 +232,10 @@ class QuarkCloudMediaSource(MediaSource):
     ) -> list[dict[str, Any]]:
         """List a directory, following the cursor up to a safety cap."""
         items: list[dict[str, Any]] = []
-        cursor: str | None = None
+        # The server returns next_query_cursor as an object
+        # ({"version", "token"}) and expects the same object back on the
+        # next page - round-trip it untouched (no str()).
+        cursor: dict[str, Any] | str | None = None
         while len(items) < _MAX_CHILDREN:
             data = await api.list_files(
                 parent_fid=parent_fid, size=_PAGE_SIZE, cursor=cursor
@@ -244,7 +247,7 @@ class QuarkCloudMediaSource(MediaSource):
             next_cursor = data.get("next_query_cursor")
             if not next_cursor:
                 break
-            cursor = str(next_cursor)
+            cursor = next_cursor
         return items[:_MAX_CHILDREN]
 
     def _build_child(self, item: dict[str, Any]) -> BrowseMediaSource | None:
