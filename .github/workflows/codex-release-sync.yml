@@ -1,0 +1,75 @@
+name: Codex release mirror
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  mirror:
+    if: startsWith(github.head_ref, 'codex-release-sync-')
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      UPSTREAM: ha-china/ha_quarkcloud
+    steps:
+      - name: Mirror missing releases
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          created=0
+          uploaded=0
+          skipped=0
+
+          gh api --paginate --slurp "repos/$UPSTREAM/releases?per_page=100" > "$work/pages.json"
+          jq -c '[.[][]] | reverse[]' "$work/pages.json" > "$work/releases.jsonl"
+
+          while IFS= read -r release; do
+            tag="$(jq -r '.tag_name' <<<"$release")"
+            encoded_tag="$(printf '%s' "$tag" | jq -sRr @uri)"
+            name="$(jq -r '.name // .tag_name' <<<"$release")"
+            body="$(jq -r '.body // ""' <<<"$release")"
+            draft="$(jq -r '.draft' <<<"$release")"
+            prerelease="$(jq -r '.prerelease' <<<"$release")"
+
+            if ! gh api "repos/$repo/git/ref/tags/$encoded_tag" >/dev/null 2>&1; then
+              commit_sha="$(gh api "repos/$UPSTREAM/commits/$encoded_tag" --jq .sha)"
+              jq -n --arg ref "refs/tags/$tag" --arg sha "$commit_sha" '{ref:$ref,sha:$sha}' |
+                gh api --method POST "repos/$repo/git/refs" --input - >/dev/null
+            fi
+
+            if fork_release="$(gh api "repos/$repo/releases/tags/$encoded_tag" 2>/dev/null)"; then
+              skipped=$((skipped + 1))
+            else
+              payload="$(jq -n --arg tag "$tag" --arg name "$name" --arg body "$body" --argjson draft "$draft" --argjson prerelease "$prerelease" '{tag_name:$tag,name:$name,body:$body,draft:$draft,prerelease:$prerelease}')"
+              fork_release="$(gh api --method POST "repos/$repo/releases" --input - <<<"$payload")"
+              created=$((created + 1))
+            fi
+
+            fork_id="$(jq -r '.id' <<<"$fork_release")"
+            jq -r '.assets[]? | [.name,.browser_download_url] | @tsv' <<<"$release" |
+            while IFS=$'\t' read -r asset_name asset_url; do
+              [ -n "$asset_name" ] || continue
+              if gh api "repos/$repo/releases/$fork_id/assets?per_page=100" --paginate --jq '.[].name' | grep -Fxq "$asset_name"; then
+                continue
+              fi
+              asset_path="$work/$asset_name"
+              curl --fail --location --retry 3 --retry-delay 2 --output "$asset_path" "$asset_url"
+              gh release upload "$tag" "$asset_path" --repo "$repo"
+              rm -f "$asset_path"
+              uploaded=$((uploaded + 1))
+            done
+          done < "$work/releases.jsonl"
+
+          echo "created=$created uploaded=$uploaded existing=$skipped"
+
+      - name: Close temporary pull request
+        if: always()
+        shell: bash
+        run: gh pr close "${{ github.event.pull_request.number }}" --repo "$GITHUB_REPOSITORY" --delete-branch
